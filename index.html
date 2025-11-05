@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Reformatter for TablePress</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			background-image: url("https://stonewallfg.com/wp-content/uploads/2024/08/home-section-1-background.png");
+			background-position: center center;
+			background-repeat: no-repeat;
+			background-size: cover;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f1ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8e9ff;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        
+        .preview {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .preview h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .preview pre {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CSV Reformatter for TablePress</h1>
+        <p class="subtitle">Upload your CSV to consolidate measurement rows with newlines</p>
+        
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📤</div>
+            <p><strong>Click to upload</strong> or drag and drop your CSV file here</p>
+            <p style="font-size: 12px; color: #999; margin-top: 8px;">CSV or Excel files accepted</p>
+        </div>
+        
+        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+        
+        <button id="downloadBtn" style="display: none;">⬇️ Download Reformatted CSV</button>
+        
+        <div class="status" id="status"></div>
+        
+        <div class="preview" id="preview">
+            <h3>📋 Preview (first 5 rows)</h3>
+            <pre id="previewContent"></pre>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="inputRows">0</div>
+                    <div class="stat-label">Input Rows</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="outputRows">0</div>
+                    <div class="stat-label">Output Rows</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="consolidated">0</div>
+                    <div class="stat-label">Consolidated</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let reformattedData = null;
+        
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const status = document.getElementById('status');
+        const preview = document.getElementById('preview');
+        const previewContent = document.getElementById('previewContent');
+        
+        // Upload area interactions
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) processFile(file);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) processFile(file);
+        });
+        
+        function processFile(file) {
+            showStatus('Processing file...', 'info');
+            preview.style.display = 'none';
+            downloadBtn.style.display = 'none';
+            
+            Papa.parse(file, {
+                complete: function(results) {
+                    try {
+                        const reformatted = reformatTable(results.data);
+                        reformattedData = reformatted;
+                        
+                        showStatus('✅ Success! File reformatted and ready to download', 'success');
+                        downloadBtn.style.display = 'inline-block';
+                        showPreview(reformatted);
+                    } catch (error) {
+                        showStatus('❌ Error: ' + error.message, 'error');
+                    }
+                },
+                error: function(error) {
+                    showStatus('❌ Error parsing file: ' + error.message, 'error');
+                }
+            });
+        }
+        
+        function isValidStockRow(row) {
+            if (!row || !row[0]) return false;
+            const symbol = row[0].trim();
+            return symbol !== '' && symbol !== '-';
+        }
+        
+        function reformatTable(data) {
+            if (!data || data.length < 2) {
+                throw new Error('File must contain at least a header row and one data row');
+            }
+            
+            const inputRowCount = data.length;
+            const reformatted = [];
+            const header = data.shift();
+            reformatted.push(header);
+            
+            let i = 0;
+            let rowsProcessed = 0;
+            let rowsConsolidated = 0;
+            
+            while (i < data.length) {
+                const currentRow = data[i];
+                
+                if (isValidStockRow(currentRow)) {
+                    const mainRow = currentRow;
+                    const measurementCol = [];
+                    const consolidatedCols = {};
+                    
+                    // Add main row measurement
+                    if (mainRow[5] && mainRow[5].trim()) {
+                        measurementCol.push(mainRow[5].trim());
+                    }
+                    
+                    // Add main row data from column 6+
+                    for (let col = 6; col <= 9; col++) {
+                        if (!consolidatedCols[col]) consolidatedCols[col] = [];
+                        consolidatedCols[col].push(mainRow[col] ? mainRow[col].trim() : '');
+                    }
+                    
+                    // Check next 3 rows for continuation
+                    let rowsConsumed = 0;
+                    for (let j = 1; j <= Math.min(3, data.length - i - 1); j++) {
+                        const nextRow = data[i + j];
+                        const nextSymbol = nextRow[0] ? nextRow[0].trim() : '';
+                        
+                        if (nextSymbol === '' || nextSymbol === '-') {
+                            // This is a continuation row
+                            if (nextRow[5] && nextRow[5].trim()) {
+                                measurementCol.push(nextRow[5].trim());
+                            }
+                            
+                            for (let col = 6; col <= 9; col++) {
+                                if (!consolidatedCols[col]) consolidatedCols[col] = [];
+                                consolidatedCols[col].push(nextRow[col] ? nextRow[col].trim() : '');
+                            }
+                            
+                            rowsConsumed++;
+                            rowsConsolidated++;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // Build output row
+                    const outputRow = [];
+                    for (let col = 0; col < 5; col++) {
+                        outputRow[col] = mainRow[col] || '';
+                    }
+                    
+                    outputRow[5] = measurementCol.join('\n');
+                    
+                    for (const [colIdx, values] of Object.entries(consolidatedCols)) {
+                        outputRow[colIdx] = values.join('\n');
+                    }
+                    
+                    reformatted.push(outputRow);
+                    rowsProcessed++;
+                    i += rowsConsumed + 1;
+                } else {
+                    i++;
+                }
+            }
+            
+            // Update stats
+            document.getElementById('inputRows').textContent = inputRowCount;
+            document.getElementById('outputRows').textContent = reformatted.length;
+            document.getElementById('consolidated').textContent = rowsConsolidated;
+            
+            return reformatted;
+        }
+        
+        function showPreview(data) {
+            const previewRows = data.slice(0, 6); // Header + 5 data rows
+            let previewText = '';
+            
+            previewRows.forEach((row, idx) => {
+                const rowPreview = row.slice(0, 7).map(cell => {
+                    const str = String(cell || '');
+                    return str.length > 30 ? str.substring(0, 30) + '...' : str;
+                });
+                previewText += `Row ${idx}: [${rowPreview.join('] [')}]\n`;
+            });
+            
+            previewContent.textContent = previewText;
+            preview.style.display = 'block';
+        }
+        
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+        }
+        
+        downloadBtn.addEventListener('click', () => {
+            if (!reformattedData) return;
+            
+            const csv = Papa.unparse(reformattedData);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'reformatted_table.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showStatus('✅ Downloaded! Now import this file into TablePress', 'success');
+        });
+    </script>
+</body>
+</html>
