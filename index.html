@@ -160,9 +160,7 @@
                         const workbook = XLSX.read(data, { type: 'array' });
                         const firstSheet = workbook.SheetNames[0];
                         const sheet = workbook.Sheets[firstSheet];
-                        // Convert sheet -> array-of-arrays while preserving hyperlinks and normalizing cell values
                         const arr = sheetToAoA(sheet);
-                        // Trim any completely empty leading rows (sometimes '!ref' covers unused rows)
                         while (arr.length && (!Array.isArray(arr[0]) || arr[0].every(c => String(c ?? '').trim() === ''))) {
                             arr.shift();
                         }
@@ -190,16 +188,13 @@
 
         function handleParsedData(rawData) {
             try {
-                // Normalize rows: ensure arrays and trim string cells
                 const normalized = rawData.map(row => (Array.isArray(row) ? row.map(cell => typeof cell === 'string' ? cell.trim() : (cell ?? '')) : []));
 
-                // Remove completely empty rows (all cells empty)
                 const cleaned = normalized.filter(row => {
                     if (!row) return false;
                     return row.some(cell => String(cell ?? '').trim() !== '');
                 });
 
-                // Find header row that starts with "Symbol" in first cell (ignore HTML tags)
                 const headerIdx = cleaned.findIndex(row => {
                     const first = String(row[0] ?? '');
                     const textOnly = first.replace(/<[^>]*>/g, '').trim().toLowerCase();
@@ -207,7 +202,7 @@
                 });
                 if (headerIdx === -1) throw new Error('Header row with "Symbol" in the first cell not found');
 
-                const sliced = cleaned.slice(headerIdx); // keep header and everything after
+                const sliced = cleaned.slice(headerIdx);
                 if (sliced.length < 2) throw new Error('File must contain header row and at least one data row after "Symbol" header');
 
                 const reformatted = reformatTable(sliced);
@@ -228,13 +223,11 @@
         }
 
         function reformatTable(data) {
-            // data: [header, ...rows]
             const inputRowCount = data.length;
             const reformatted = [];
-            const header = data[0].slice(); // copy header
+            const header = data[0].slice();
             reformatted.push(header);
 
-            // Determine number of columns to process (at least 6 columns expected)
             let maxCols = header.length;
             for (let r = 1; r < data.length; r++) {
                 maxCols = Math.max(maxCols, data[r].length);
@@ -243,7 +236,7 @@
             const consolidateStart = 6;
             const consolidateEnd = Math.max(consolidateStart, maxCols - 1);
 
-            let i = 1; // start after header
+            let i = 1;
             let rowsConsolidated = 0;
             let outputRows = 0;
 
@@ -264,14 +257,12 @@
                         consolidatedCols[col].push(String(mainRow[col] ?? '').trim());
                     }
 
-                    // Check next up to 3 rows for continuation (empty first column or '-')
                     let rowsConsumed = 0;
                     for (let j = 1; j <= 3 && (i + j) < data.length; j++) {
                         const nextRow = data[i + j];
                         const nextSymbol = String(nextRow[0] ?? '').trim();
 
                         if (nextSymbol === '' || nextSymbol === '-') {
-                            // continuation row
                             if (String(nextRow[measurementIdx] ?? '').trim()) {
                                 measurementCol.push(String(nextRow[measurementIdx]).trim());
                             }
@@ -285,7 +276,6 @@
                         }
                     }
 
-                    // Build output row with safe indices
                     const outputRow = [];
                     for (let col = 0; col < Math.max(5, header.length); col++) {
                         outputRow[col] = String(mainRow[col] ?? '');
@@ -301,12 +291,10 @@
                     outputRows++;
                     i += rowsConsumed + 1;
                 } else {
-                    // Not a valid stock row: skip
                     i++;
                 }
             }
 
-            // Update stats
             document.getElementById('inputRows').textContent = inputRowCount;
             document.getElementById('outputRows').textContent = reformatted.length;
             document.getElementById('consolidated').textContent = rowsConsolidated;
@@ -315,7 +303,7 @@
         }
 
         function showPreview(data) {
-            const previewRows = data.slice(0, 6); // Header + up to 5 data rows
+            const previewRows = data.slice(0, 6);
             let previewText = '';
             previewRows.forEach((row, idx) => {
                 const rowPreview = (Array.isArray(row) ? row : []).slice(0, 7).map(cell => {
@@ -334,9 +322,31 @@
             status.style.display = 'block';
         }
 
+        // Protect cells that start with formula-triggering characters
+        function protectFormulaChars(cell) {
+            const str = String(cell ?? '');
+            if (str.length === 0) return str;
+            
+            const firstChar = str.charAt(0);
+            // Check if first character could trigger formula interpretation
+            if (firstChar === '-' || firstChar === '+' || firstChar === '=' || firstChar === '@') {
+                // Prepend non-breaking space (U+00A0) to prevent formula interpretation
+                return '\u00A0' + str;
+            }
+            return str;
+        }
+
         downloadBtn.addEventListener('click', () => {
             if (!reformattedData) return;
-            const csv = Papa.unparse(reformattedData);
+            
+            // Create a protected copy of the data for CSV export
+            const protectedData = reformattedData.map((row, rowIdx) => {
+                if (rowIdx === 0) return row; // Don't modify header
+                
+                return row.map(cell => protectFormulaChars(cell));
+            });
+            
+            const csv = Papa.unparse(protectedData);
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
@@ -350,15 +360,12 @@
             showStatus('✅ Downloaded! Now import this file into TablePress', 'success');
         });
 
-        // Convert worksheet to array-of-arrays while preserving hyperlinks as HTML anchors.
         function sheetToAoA(ws) {
             if (!ws || typeof ws !== 'object') return [];
  
-            // Collect real cell addresses (exclude metadata keys beginning with '!')
             const cellKeys = Object.keys(ws).filter(k => k[0] !== '!');
             if (cellKeys.length === 0) return [];
  
-            // Compute bounds from actual cells (avoids expanded '!ref' ranges)
             let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
             for (const k of cellKeys) {
                 const { r, c } = XLSX.utils.decode_cell(k);
@@ -372,7 +379,6 @@
             const nCols = maxC - minC + 1;
             const rows = Array.from({ length: nRows }, () => Array.from({ length: nCols }, () => ''));
  
-            // Fill rows using offset (so column 0 corresponds to minC)
             for (const k of cellKeys) {
                 const { r, c } = XLSX.utils.decode_cell(k);
                 const cell = ws[k];
@@ -394,11 +400,8 @@
                 }
             }
  
-            // Trim completely-empty leading rows
             while (rows.length && rows[0].every(c => String(c ?? '').trim() === '')) rows.shift();
-            // Trim completely-empty trailing rows
             while (rows.length && rows[rows.length - 1].every(c => String(c ?? '').trim() === '')) rows.pop();
-            // If a header row exists that starts with "Symbol" in the first cell, drop everything before it
             const headerIdx = rows.findIndex(r => {
                 const first = String(r[0] ?? '');
                 const textOnly = first.replace(/<[^>]*>/g, '').trim().toLowerCase();
@@ -406,7 +409,7 @@
             });
             if (headerIdx > 0) rows.splice(0, headerIdx);
             return rows;
-}
+        }
     </script>
 </body>
 </html>
